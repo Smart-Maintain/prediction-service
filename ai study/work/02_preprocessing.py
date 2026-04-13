@@ -8,7 +8,7 @@ data_dir = '../'
 files = ['FD001', 'FD002', 'FD003', 'FD004']
 
 columns = ['unit', 'cycle', 'op_setting_1', 'op_setting_2', 'op_setting_3'] + [f's{i}' for i in range(1, 22)]
-sensors_to_drop = ['s1', 's5', 's10', 's16', 's18', 's19']
+sensors_to_drop = ['s1', 's5', 's6', 's10', 's14', 's16', 's18', 's19', 's20', 's21']
 sensor_columns = [f's{i}' for i in range(1, 22) if f's{i}' not in sensors_to_drop]
 
 print("Starting Step 2: Clean & Normalize...\n")

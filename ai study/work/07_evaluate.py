@@ -17,7 +17,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Device for Evaluation: {device}")
 
 # 1. Load the trained model
-model = model_module.MultiTaskModel(n_features=18, window_size=30).to(device)
+model = model_module.MultiTaskModel(n_features=14, window_size=30).to(device)
 model.load_state_dict(torch.load('best_multitask_model.pth', map_location=device))
 model.eval()
 
@@ -144,29 +144,31 @@ plt.tight_layout()
 plt.savefig('classification_eval_fd001.png')
 plt.close()
 
-print("--- Plot predicted vs true RUL per engine (e.g. Engine #1) ---")
-engine1 = fd001_test_df[fd001_test_df['unit'] == 1].copy()
-engine1_data = engine1[fd001_features].values
-engine1_ruls = engine1['RUL'].values
+print("--- Plot predicted vs true RUL per engine (e.g. Engine #3 for longer timeline) ---")
+# Pick an engine with a good amount of cycles to see the trend
+longest_engine = fd001_test_df['unit'].value_counts().idxmax()
+engine_plot = fd001_test_df[fd001_test_df['unit'] == longest_engine].copy()
+engine_data = engine_plot[fd001_features].values
+engine_ruls = engine_plot['RUL'].values
 
 win_preds = []
 win_trues = []
-win_cycles = engine1['cycle'].values[29:]
+win_cycles = engine_plot['cycle'].values[29:]
 
-# Evaluate sliding down all cycles of Engine 1
-for i in range(len(engine1_data) - 30 + 1):
-    win = torch.tensor(engine1_data[np.newaxis, i:i+30, :], dtype=torch.float32).to(device)
+# Evaluate sliding down all cycles of this Engine
+for i in range(len(engine_data) - 30 + 1):
+    win = torch.tensor(engine_data[np.newaxis, i:i+30, :], dtype=torch.float32).to(device)
     with torch.no_grad():
         r, _ = model(win)
     win_preds.append(r.item())
-    win_trues.append(engine1_ruls[i+29])
+    win_trues.append(engine_ruls[i+29])
 
-plt.figure(figsize=(8, 5))
+plt.figure(figsize=(10, 5))
 plt.plot(win_cycles, win_trues, label='True RUL', color='blue')
 plt.plot(win_cycles, win_preds, label='Predicted RUL', color='red', linestyle='--')
 plt.xlabel('Cycle')
 plt.ylabel('Remaining Useful Life (RUL)')
-plt.title('Predicted vs True RUL (FD001 - Test Engine 1)')
+plt.title(f'Predicted vs True RUL (FD001 - Test Engine {longest_engine})')
 plt.legend()
 plt.grid()
 plt.savefig('rul_prediction_engine1.png')

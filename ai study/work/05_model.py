@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class MultiTaskModel(nn.Module):
-    def __init__(self, n_features=18, window_size=30):
+    def __init__(self, n_features=14, window_size=30):
         super(MultiTaskModel, self).__init__()
         
         # Option A: Bi-LSTM encoder
@@ -68,15 +68,15 @@ def combined_loss(rul_pred, rul_true, alert_pred, alert_true, alpha=1.0, beta=1.
 if __name__ == "__main__":
     print("Testing Step 5: Multi-Task Model Architecture...\n")
     
-    # We use 18 features because Step 1-4 left us with 18 sensor + operational columns
+    # We use 14 features because Step 1-4 left us with 14 sensor + operational columns
     # instead of the 15 mentioned generically in the diagram.
-    model = MultiTaskModel(n_features=18, window_size=30)
+    model = MultiTaskModel(n_features=14, window_size=30)
     
     print("Model Architecture Graph:")
     print(model)
     
-    # Test with dummy batch: 64 samples, 30 cycles, 18 features
-    dummy_input = torch.randn(64, 30, 18)
+    # Test with dummy batch: 64 samples, 30 cycles, 14 features
+    dummy_input = torch.randn(64, 30, 14)
     dummy_rul_true = torch.empty(64).uniform_(0, 125) # random true RULs
     dummy_alert_true = torch.empty(64).random_(2)     # random binary alerts (0 or 1)
     

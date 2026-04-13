@@ -9,12 +9,12 @@ model_module = importlib.import_module("05_model")
 device = torch.device('cpu')
 
 # 1. Initialize the PyTorch model and load the best weights
-model = model_module.MultiTaskModel(n_features=18, window_size=30).to(device)
+model = model_module.MultiTaskModel(n_features=14, window_size=30).to(device)
 model.load_state_dict(torch.load('best_multitask_model.pth', map_location=device))
 model.eval()
 
-# 2. Create a dummy input with the right shape (batch_size=1, window_size=30, n_features=18)
-dummy_input = torch.randn(1, 30, 18).to(device)
+# 2. Create a dummy input with the right shape (batch_size=1, window_size=30, n_features=14)
+dummy_input = torch.randn(1, 30, 14).to(device)
 
 # 3. Export to ONNX
 onnx_file_path = "api/multitask_model.onnx"

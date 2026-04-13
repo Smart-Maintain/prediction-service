@@ -20,7 +20,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
 # Initialize Model
-model = model_module.MultiTaskModel(n_features=18, window_size=30).to(device)
+model = model_module.MultiTaskModel(n_features=14, window_size=30).to(device)
 
 # Tasks: Optimizer, Scheduler, Early Stopping
 EPOCHS = 100
@@ -65,6 +65,7 @@ for epoch in range(EPOCHS):
             rul_pred, rul_batch, alert_pred, alert_batch, alpha=ALPHA, beta=BETA)
         
         total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
         train_loss_epoch += total_loss.item() * X_batch.size(0)
