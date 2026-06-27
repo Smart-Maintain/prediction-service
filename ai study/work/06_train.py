@@ -8,6 +8,12 @@ from sklearn.metrics import mean_squared_error, f1_score, roc_auc_score
 import copy
 import os
 import importlib
+import mlflow 
+
+mlflow.set_tracking_uri("http://mlflow.mlops.svc.cluster.local:5050")  
+mlflow.set_experiment("Aerospace_Maintenance")
+
+mlflow.pytorch.autolog()
 
 # Standard trick to import scripts starting with numbers
 seq_module = importlib.import_module("04_sequences")
@@ -96,50 +102,111 @@ for epoch in range(EPOCHS):
             all_alert_preds.extend(alert_pred.cpu().numpy())
             all_alert_trues.extend(alert_batch.cpu().numpy())
             
-    val_loss_epoch /= len(val_loader.dataset)
-    
-    # Calculate Metrics
-    rmse = np.sqrt(mean_squared_error(all_rul_trues, all_rul_preds))
-    
-    # Threshold alert probabilities at 0.5 for F1 score
-    alert_preds_binary = (np.array(all_alert_preds) >= 0.5).astype(int)
-    
-    # Skip AUC if only one class exists in validation batch (can happen in extreme cases)
-    try:
-        auc = roc_auc_score(all_alert_trues, all_alert_preds)
-    except ValueError:
-        auc = 0.5
+        train_loss_epoch /= len(train_loader.dataset)
         
-    f1 = f1_score(all_alert_trues, alert_preds_binary, zero_division=0)
+        # --- VALIDATION ---
+        model.eval()
+        val_loss_epoch = 0.0
+        
+        all_rul_preds, all_rul_trues = [], []
+        all_alert_preds, all_alert_trues = [], []
+        
+        with torch.no_grad():
+            for X_batch, rul_batch, alert_batch in val_loader:
+                X_batch = X_batch.to(device)
+                rul_batch = rul_batch.to(device)
+                alert_batch = alert_batch.to(device)
+                
+                rul_pred, alert_pred = model(X_batch)
+                total_loss, mse, bce = model_module.combined_loss(
+                    rul_pred, rul_batch, alert_pred, alert_batch, alpha=ALPHA, beta=BETA)
+                
+                val_loss_epoch += total_loss.item() * X_batch.size(0)
+                
+                all_rul_preds.extend(rul_pred.cpu().numpy())
+                all_rul_trues.extend(rul_batch.cpu().numpy())
+                all_alert_preds.extend(alert_pred.cpu().numpy())
+                all_alert_trues.extend(alert_batch.cpu().numpy())
+                
+        val_loss_epoch /= len(val_loader.dataset)
+        
+        # Calculate Metrics
+        rmse = np.sqrt(mean_squared_error(all_rul_trues, all_rul_preds))
+        alert_preds_binary = (np.array(all_alert_preds) >= 0.5).astype(int)
+        
+        try:
+            auc = roc_auc_score(all_alert_trues, all_alert_preds)
+        except ValueError:
+            auc = 0.5
+            
+        f1 = f1_score(all_alert_trues, alert_preds_binary, zero_division=0)
+        
+        # Logging local history
+        history['train_loss'].append(train_loss_epoch)
+        history['val_loss'].append(val_loss_epoch)
+        history['val_rmse'].append(rmse)
+        history['val_f1'].append(f1)
+        history['val_auc'].append(auc)
+        
+        mlflow.log_metric("train_loss", train_loss_epoch, step=epoch)
+        mlflow.log_metric("val_loss", val_loss_epoch, step=epoch)
+        mlflow.log_metric("val_rmse", rmse, step=epoch)
+        mlflow.log_metric("val_f1", f1, step=epoch)
+        mlflow.log_metric("val_auc", auc, step=epoch)
+        
+        print(f"Epoch {epoch+1:03d}/{EPOCHS} | "
+              f"Train Loss: {train_loss_epoch:.2f} | "
+              f"Val Loss: {val_loss_epoch:.2f} | "
+              f"Val RMSE: {rmse:.2f} | Val F1: {f1:.3f} | Val AUC: {auc:.3f}")
+        
+        # Scheduler step
+        scheduler.step(val_loss_epoch)
+        
+        # Early Stopping Task
+        if val_loss_epoch < best_val_loss:
+            best_val_loss = val_loss_epoch
+            best_model_weights = copy.deepcopy(model.state_dict())
+            es_counter = 0
+            torch.save(best_model_weights, 'best_multitask_model.pth')
+        else:
+            es_counter += 1
+            if es_counter >= ES_PATIENCE:
+                print(f"\nEarly stopping triggered at epoch {epoch+1}! Restoring best weights...")
+                model.load_state_dict(best_model_weights)
+                break
+
+    print("\nTraining Complete.")
+    print(f"Best Validation Loss: {best_val_loss:.2f}")
+
+    # Plotting Loss Curves
+    plt.figure(figsize=(10, 5))
+    plt.plot(history['train_loss'], label='Train Loss')
+    plt.plot(history['val_loss'], label='Val Loss')
+    plt.title('Training and Validation Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss (α*MSE + β*BCE)')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('learning_curves.png')
+    plt.close()
+
+    dummy_input = torch.randn(64, 30, 14).to(device)
+    mlflow.log_artifact('learning_curves.png')
     
-    # Logging
-    history['train_loss'].append(train_loss_epoch)
-    history['val_loss'].append(val_loss_epoch)
-    history['val_rmse'].append(rmse)
-    history['val_f1'].append(f1)
-    history['val_auc'].append(auc)
+    mlflow.pytorch.log_model(model, artifact_path="model", registered_model_name="Aerospace_MultiTask_Model")
     
-    print(f"Epoch {epoch+1:03d}/{EPOCHS} | "
-          f"Train Loss: {train_loss_epoch:.2f} | "
-          f"Val Loss: {val_loss_epoch:.2f} | "
-          f"Val RMSE: {rmse:.2f} | Val F1: {f1:.3f} | Val AUC: {auc:.3f}")
-    
-    # Scheduler step
-    scheduler.step(val_loss_epoch)
-    
-    # Early Stopping Task
-    if val_loss_epoch < best_val_loss:
-        best_val_loss = val_loss_epoch
-        best_model_weights = copy.deepcopy(model.state_dict())
-        es_counter = 0
-        # Save best model
-        torch.save(best_model_weights, 'best_multitask_model.pth')
-    else:
-        es_counter += 1
-        if es_counter >= ES_PATIENCE:
-            print(f"\nEarly stopping triggered at epoch {epoch+1}! Restoring best weights...")
-            model.load_state_dict(best_model_weights)
-            break
+    mlflow.log_artifact('best_multitask_model.pth', artifact_path="model")
+    torch.onnx.export(
+        model, 
+        dummy_input, 
+        "multitask_model.onnx", 
+        export_params=True, 
+        opset_version=11,
+        input_names=['input'], 
+        output_names=['rul_output', 'alert_output']
+    )
+    mlflow.log_artifact("multitask_model.onnx")
+    print("ONNX model exported and logged successfully!")
 
 print("\nTraining Complete.")
 print(f"Best Validation Loss: {best_val_loss:.2f}")
