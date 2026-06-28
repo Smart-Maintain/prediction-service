@@ -10,8 +10,11 @@ import os
 import importlib
 import mlflow 
 
-mlflow.set_tracking_uri("http://mlflow.mlops.svc.cluster.local:5050")  
-mlflow.set_experiment("Aerospace_Maintenance")
+# mlflow.set_tracking_uri("http://mlflow.mlops.svc.cluster.local:5050")  
+# mlflow.set_experiment("Aerospace_Maintenance")
+
+mlflow.set_tracking_uri("http://mlflow-service.argocd.svc.cluster.local:5000")
+mlflow.set_experiment("aerospace-predictive-maintenance"
 
 mlflow.pytorch.autolog()
 
@@ -208,19 +211,4 @@ for epoch in range(EPOCHS):
     mlflow.log_artifact("multitask_model.onnx")
     print("ONNX model exported and logged successfully!")
 
-print("\nTraining Complete.")
-print(f"Best Validation Loss: {best_val_loss:.2f}")
-
-# Plotting Loss Curves
-plt.figure(figsize=(10, 5))
-plt.plot(history['train_loss'], label='Train Loss')
-plt.plot(history['val_loss'], label='Val Loss')
-plt.title('Training and Validation Loss')
-plt.xlabel('Epochs')
-plt.ylabel('Loss (α*MSE + β*BCE)')
-plt.legend()
-plt.grid(True)
-plt.savefig('learning_curves.png')
-plt.close()
-
-print("Saved 'learning_curves.png' and 'best_multitask_model.pth'.")
+print("Saved 'learning_curves.png' and 'best_multitask_model.pth' and logged to MLflow successfully!")
