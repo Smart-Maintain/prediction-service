@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: prediction-container
-        image: bouazalmat/aerospace-prediction-api:v1
+        image: bouazalmat/aerospace-prediction-api:v2
         ports:
         - containerPort: 8000
         resources:
