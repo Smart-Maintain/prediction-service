@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+*.pth
+*.onnx
+*.onnx.data
+data/processed/*.csv
+figures/*.png
+artifacts/models/
+artifacts/onnx/
+*.log
+

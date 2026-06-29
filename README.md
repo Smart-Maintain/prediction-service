@@ -26,30 +26,47 @@ The project covers the full machine learning workflow:
 ```text
 back-aerospace-predictive-maintenance/
 |-- README.md
+|-- requirements.txt
 |-- issue_report.md
-`-- ai study/
-    `-- work/
-        |-- 01_eda.py
-        |-- 02_preprocessing.py
-        |-- 03_labels.py
-        |-- 04_sequences.py
-        |-- 05_model.py
-        |-- 06_train.py
-        |-- 07_evaluate.py
-        |-- 08_export_onnx.py
-        |-- best_multitask_model.pth
-        |-- *_preprocessed.csv
-        |-- *_labeled.csv
-        |-- *.png
+|-- artifacts/
+|   |-- models/
+|   |   `-- best_multitask_model.pth
+|   `-- onnx/
+|       |-- multitask_model.onnx
+|       `-- multitask_model.onnx.data
+|-- data/
+|   |-- raw/
+|   `-- processed/
+|       |-- *_preprocessed.csv
+|       `-- *_labeled.csv
+|-- deploy/
+|   |-- Dockerfile
+|   |-- requirements-api.txt
+|   `-- kubernetes/
+|       |-- deployment.yml
+|       |-- mlflow-server.yaml
+|       `-- namespace.yaml
+|-- figures/
+|   `-- *.png
+|-- scripts/
+|   |-- eda.py
+|   `-- export_onnx.py
+`-- src/
+    `-- prediction_service/
+        |-- __init__.py
+        |-- paths.py
+        |-- preprocessing.py
+        |-- labeling.py
+        |-- sequences.py
+        |-- model.py
+        |-- train.py
+        |-- evaluate.py
         `-- api/
-            |-- main.py
-            |-- requirements.txt
-            |-- Dockerfile
-            |-- multitask_model.onnx
-            `-- multitask_model.onnx.data
+            |-- __init__.py
+            `-- main.py
 ```
 
-The `api/` folder is the part backend/devops needs for deployment. The training scripts and generated CSV files are useful for retraining, debugging, and explaining how the model was created.
+The `deploy/` folder is the part backend/devops needs for deployment. The training code lives under `src/prediction_service/`, and generated outputs stay in `data/processed/`, `artifacts/`, and `figures/`.
 
 ## Technologies Used
 
@@ -93,7 +110,7 @@ The project drops weak or redundant sensors and keeps 14 final input features fo
 
 ## Preprocessing Summary
 
-The preprocessing pipeline in `02_preprocessing.py`:
+The preprocessing pipeline in `src/prediction_service/preprocessing.py`:
 
 - loads train and test files for FD001-FD004
 - drops sensors `s1`, `s5`, `s6`, `s10`, `s14`, `s16`, `s18`, `s19`, `s20`, and `s21`
@@ -104,7 +121,7 @@ The preprocessing pipeline in `02_preprocessing.py`:
 - sorts each engine by `unit` and `cycle`
 - writes `*_preprocessed.csv` files
 
-The label pipeline in `03_labels.py`:
+The label pipeline in `src/prediction_service/labeling.py`:
 
 - calculates RUL as the number of cycles remaining before failure
 - caps RUL at `125`
@@ -115,7 +132,7 @@ alert = 1 when RUL <= 30
 alert = 0 when RUL > 30
 ```
 
-The sequence pipeline in `04_sequences.py` builds sliding windows:
+The sequence pipeline in `src/prediction_service/sequences.py` builds sliding windows:
 
 ```text
 input shape = (batch, 30 cycles, 14 features)
@@ -123,7 +140,7 @@ input shape = (batch, 30 cycles, 14 features)
 
 ## Final Model
 
-The model is defined in `05_model.py`.
+The model is defined in `src/prediction_service/model.py`.
 
 Architecture:
 
@@ -141,7 +158,7 @@ The model is multi-task because it predicts both:
 - `rul_cycles`: remaining useful life
 - `alert`: whether the engine is close to failure
 
-Training in `06_train.py` uses:
+Training in `src/prediction_service/train.py` uses:
 
 - Adam optimizer
 - weight decay
@@ -153,24 +170,24 @@ Training in `06_train.py` uses:
 The trained PyTorch weights are saved as:
 
 ```text
-ai study/work/best_multitask_model.pth
+artifacts/models/best_multitask_model.pth
 ```
 
 The exported inference model is saved as:
 
 ```text
-ai study/work/api/multitask_model.onnx
-ai study/work/api/multitask_model.onnx.data
+artifacts/onnx/multitask_model.onnx
+artifacts/onnx/multitask_model.onnx.data
 ```
 
-Keep both ONNX files together. The `.onnx` file references `multitask_model.onnx.data`.
+Keep both ONNX files together in `artifacts/onnx/`. The `.onnx` file references `multitask_model.onnx.data`.
 
 ## API
 
 The deployable API is implemented in:
 
 ```text
-ai study/work/api/main.py
+src/prediction_service/api/main.py
 ```
 
 It uses FastAPI and ONNX Runtime. PyTorch is not required in the deployed backend container.
@@ -310,12 +327,11 @@ If the frontend calls this FastAPI service directly from the browser, backend/de
 
 ## Running the API Locally
 
-From the API directory:
+From the repository root:
 
 ```bash
-cd "ai study/work/api"
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+pip install -r deploy/requirements-api.txt
+PYTHONPATH=src uvicorn prediction_service.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Then open:
@@ -326,18 +342,11 @@ http://localhost:8000/docs
 
 ## Running with Docker
 
-Build from the API directory:
+Build from the repository root:
 
 ```bash
-cd "ai study/work/api"
-docker build -t predictive-maintenance-api .
+docker build -f deploy/Dockerfile -t predictive-maintenance-api .
 docker run -p 8000:8000 predictive-maintenance-api
-```
-
-Deployment note: because `multitask_model.onnx` references `multitask_model.onnx.data`, the Docker image must include both files. If the Dockerfile only copies `multitask_model.onnx`, add this line:
-
-```dockerfile
-COPY multitask_model.onnx.data .
 ```
 
 ## Retraining or Rebuilding the Model
@@ -345,18 +354,17 @@ COPY multitask_model.onnx.data .
 The training workflow is script-based:
 
 ```bash
-cd "ai study/work"
-python 01_eda.py
-python 02_preprocessing.py
-python 03_labels.py
-python 04_sequences.py
-python 05_model.py
-python 06_train.py
-python 07_evaluate.py
-python 08_export_onnx.py
+PYTHONPATH=src python scripts/eda.py
+PYTHONPATH=src python -m prediction_service.preprocessing
+PYTHONPATH=src python -m prediction_service.labeling
+PYTHONPATH=src python -m prediction_service.sequences
+PYTHONPATH=src python -m prediction_service.model
+PYTHONPATH=src python -m prediction_service.train
+PYTHONPATH=src python -m prediction_service.evaluate
+PYTHONPATH=src python scripts/export_onnx.py
 ```
 
-The scripts expect the raw C-MAPSS files to be available through the relative `data_dir = '../'` path. If the raw files are stored somewhere else, update `data_dir` in the scripts or place the files where the scripts expect them.
+The scripts expect the raw C-MAPSS files to be available in `data/raw/`. If the raw files are stored somewhere else, adjust the paths in `src/prediction_service/paths.py`.
 
 Required raw files for full retraining:
 
@@ -379,26 +387,26 @@ RUL_FD004.txt
 
 Generated artifacts already present in the project include:
 
-- `best_multitask_model.pth`
-- `api/multitask_model.onnx`
-- `api/multitask_model.onnx.data`
-- preprocessed CSV files
-- labeled CSV files
-- learning curves
-- sensor trend plots
-- correlation matrix
-- operating-condition cluster plot
-- RUL prediction plot
-- classification evaluation plot
-- feature-importance plot
+- `artifacts/models/best_multitask_model.pth`
+- `artifacts/onnx/multitask_model.onnx`
+- `artifacts/onnx/multitask_model.onnx.data`
+- `data/processed/*_preprocessed.csv`
+- `data/processed/*_labeled.csv`
+- `figures/learning_curves.png`
+- `figures/sensor_trends_fd001_unit1.png`
+- `figures/correlation_matrix_fd001.png`
+- `figures/op_conditions_clusters_fd002.png`
+- `figures/rul_prediction_engine1.png`
+- `figures/classification_eval_fd001.png`
+- `figures/shap_feature_importance.png`
 
 ## Notes for Teammates
 
-- Use the `api/` folder for deployment.
+- Use `deploy/` for deployment assets.
 - The model input is not raw telemetry. It is a prepared 30-cycle sequence.
 - The model requires exactly 14 features per cycle.
 - The model requires exactly 30 cycles per prediction.
 - Keep the feature order fixed.
-- Keep `multitask_model.onnx` and `multitask_model.onnx.data` in the same directory.
+- Keep `artifacts/onnx/multitask_model.onnx` and `artifacts/onnx/multitask_model.onnx.data` in the same directory.
 - Add CORS or proxy through the main backend if the frontend calls the model API directly.
 - Export preprocessing scalers before connecting this to real production telemetry.
