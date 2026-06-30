@@ -1,0 +1,113 @@
+name: Pipeline DevSecOps - Scans, Build, Sign & Notify
+
+on:
+  push:
+    branches: [ "main", "master" ]
+
+# ========================================================
+# 🔑 CONFIGURATION DES PERMISSIONS
+# ========================================================
+permissions:
+  contents: write
+  packages: write  # Donne l'autorisation essentielle de créer et pousser l'image sur GHCR
+  id-token: write
+
+jobs:
+  devsecops_pipeline:
+    name: Chaîne de Sécurité & Signature
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Récupérer le code source
+      uses: actions/checkout@v4
+
+    # ==========================================
+    # 🛠️ ÉTAPE 1 : CONFIGURATION DE PYTHON
+    # ==========================================
+    - name: Configurer l'environnement Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+
+    - name: Installer les dépendances de l'API Python
+      run: |
+        if [ -f "ai study/work/api/requirements.txt" ]; then pip install -r "ai study/work/api/requirements.txt"; fi
+
+    # ==========================================
+    # ÉTAPE 2 : SCANS DE SÉCURITÉ CIBLÉS (Génération des JSON)
+    # ==========================================
+    - name: Scanner le code source (Semgrep SAST)
+      run: |
+        pip install semgrep
+        semgrep scan --json --output=semgrep-results.json "ai study/work/api" || true
+      env:
+        SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+    - name: Configurer Snyk CLI
+      uses: snyk/actions/setup@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+    - name: Scanner les dépendances Python (Snyk SCA)
+      run: |
+        snyk auth ${{ secrets.SNYK_TOKEN }}
+        if [ -f "ai study/work/api/requirements.txt" ]; then snyk test --file="ai study/work/api/requirements.txt" --json-file-output=snyk-results.json --skip-unresolved=true || true; fi
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+    - name: Scanner le dossier et fichiers (Trivy FS)
+      uses: aquasecurity/trivy-action@v0.20.0
+      with:
+        scan-type: 'fs'
+        scan-ref: 'ai study/work/api'
+        format: 'json'
+        output: 'trivy-results.json'
+        exit-code: '0'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # ==========================================
+    # ÉTAPE 3 : LOGINS & BUILD DOCKER SUR GHCR
+    # ==========================================
+    - name: Connexion à GitHub Container Registry (GHCR)
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Construire et Pousser l'image Docker vers GHCR
+      run: |
+        # 1. Récupération et conversion du nom du repo actuel en minuscules
+        IMAGE_NAME=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        
+        # 2. Build et Push en ciblant le sous-dossier de l'API
+        docker build -t $IMAGE_NAME:latest -f "ai study/work/api/Dockerfile" "ai study/work/api"
+        docker push $IMAGE_NAME:latest
+
+    # ==========================================
+    # ÉTAPE 4 : SIGNATURE NUMÉRIQUE COSIGN SUR GHCR
+    # ==========================================
+    - name: Installer Cosign dans la VM Actions
+      uses: sigstore/cosign-installer@v3.5.0
+
+    - name: Signer l'image Docker publiée sur GHCR
+      run: |
+        IMAGE_NAME=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        
+        cosign sign --yes --key env://COSIGN_PRIVATE_KEY $IMAGE_NAME:latest
+      env:
+        COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_KEY }}
+        COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+    # ==========================================
+    # ÉTAPE 5 : ANALYSE DES RESULTATS & ALERTE BOT TELEGRAM
+    # ==========================================
+    - name: Exécuter le Script d'Analyse et Envoi Telegram
+      run: |
+        pip install requests reportlab
+        python "$GITHUB_WORKSPACE/security-notify.py"
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
