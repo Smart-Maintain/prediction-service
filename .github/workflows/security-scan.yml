@@ -56,14 +56,17 @@ jobs:
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
-    - name: Scanner le dossier et fichiers (Trivy FS avec gestion de l'espace)
+    - name: Scanner le dossier et fichiers (Trivy FS avec gestion dynamique de l'URL)
       run: |
-        # Téléchargement et installation manuelle pour forcer la gestion saine des guillemets
-        wget https://github.com/aquasecurity/trivy/releases/download/v0.51.1/trivy_0.51.1_Linux-64bit.tar.gz
-        tar -zxvf trivy_0.51.1_Linux-64bit.tar.gz trivy
+        # Récupération dynamique de la dernière version pour éviter les 404
+        LATEST_URL=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep "browser_download_url.*Linux-64bit.tar.gz" | head -n 1 | cut -d '"' -f 4)
+        
+        # Téléchargement et installation
+        wget $LATEST_URL -O trivy_latest.tar.gz
+        tar -zxvf trivy_latest.tar.gz trivy
         sudo mv trivy /usr/local/bin/
         
-        # Scan ciblé protégé par des guillemets
+        # Scan ciblé protégé par des guillemets pour l'espace dans le nom du dossier
         trivy fs --format json --output trivy-results.json --exit-code 0 "ai study/work/api"
 
     # ==========================================
