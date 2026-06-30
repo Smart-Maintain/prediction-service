@@ -56,16 +56,15 @@ jobs:
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
-    - name: Scanner le dossier et fichiers (Trivy FS)
-      uses: aquasecurity/trivy-action@v0.20.0
-      with:
-        scan-type: 'fs'
-        scan-ref: 'ai study/work/api'
-        format: 'json'
-        output: 'trivy-results.json'
-        exit-code: '0'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Scanner le dossier et fichiers (Trivy FS avec gestion de l'espace)
+      run: |
+        # Téléchargement et installation manuelle pour forcer la gestion saine des guillemets
+        wget https://github.com/aquasecurity/trivy/releases/download/v0.51.1/trivy_0.51.1_Linux-64bit.tar.gz
+        tar -zxvf trivy_0.51.1_Linux-64bit.tar.gz trivy
+        sudo mv trivy /usr/local/bin/
+        
+        # Scan ciblé protégé par des guillemets
+        trivy fs --format json --output trivy-results.json --exit-code 0 "ai study/work/api"
 
     # ==========================================
     # ÉTAPE 3 : LOGINS & BUILD DOCKER SUR GHCR
