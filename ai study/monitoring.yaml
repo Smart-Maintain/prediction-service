@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://prometheus-community.github.io/helm-charts'
+    chart: kube-prometheus-stack
+    targetRevision: 60.0.2 # Use a stable version
+    helm:
+      valueFiles:
+        # ArgoCD will look for this file in YOUR repo to override defaults
+        - https://raw.githubusercontent.com/YOUR-USERNAME/mlops-platform/main/custom-values/monitoring-values.yaml
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
