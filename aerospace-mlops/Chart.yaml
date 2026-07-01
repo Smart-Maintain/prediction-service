@@ -1,0 +1,6 @@
+apiVersion: v2
+name: aerospace-mlops
+description: A Helm chart for the Aerospace Prediction API
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
