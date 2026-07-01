@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aerospace-prediction-deployment-{{ .Values.environment }}
+  labels:
+    app: aerospace-prediction-api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      app: aerospace-prediction-api
+  template:
+    metadata:
+      labels:
+        app: aerospace-prediction-api
+    spec:
+      containers:
+      - name: prediction-container
+        image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+        ports:
+        - containerPort: 8000
+        resources:
+          limits:
+            memory: {{ .Values.api.resources.limits.memory }}
+            cpu: {{ .Values.api.resources.limits.cpu }}
+          requests:
+            memory: {{ .Values.api.resources.requests.memory }}
+            cpu: {{ .Values.api.resources.requests.cpu }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aerospace-prediction-service
+spec:
+  selector:
+    app: aerospace-prediction-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
