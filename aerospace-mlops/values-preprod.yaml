@@ -3,8 +3,8 @@ environment: preprod
 api:
   replicaCount: 1
   image:
-    repository: bouazalmat/aerospace-prediction-api
-    tag: v2
+    repository: smartmaintain/prediction-api 
+    tag: latest
   resources:
     limits:
       memory: "512Mi"
