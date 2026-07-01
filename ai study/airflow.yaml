@@ -1,0 +1,22 @@
+```apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: airflow
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://airflow.apache.org'
+    chart: airflow
+    targetRevision: 1.14.0
+    helm:
+      valueFiles:
+        - https://raw.githubusercontent.com/YOUR-USERNAME/mlops-platform/main/custom-values/airflow-values.yaml
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: airflow
+  syncPolicy:
+    automated:
+      prune: true
+    syncOptions:
+      - CreateNamespace=true```
