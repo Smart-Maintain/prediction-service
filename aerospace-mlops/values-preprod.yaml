@@ -1,0 +1,14 @@
+environment: preprod
+
+api:
+  replicaCount: 1
+  image:
+    repository: bouazalmat/aerospace-prediction-api
+    tag: v2
+  resources:
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+    requests:
+      memory: "256Mi"
+      cpu: "256m"
